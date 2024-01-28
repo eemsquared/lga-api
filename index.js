@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const { Pool } = require("pg");
+const { propertiesJson } = require("./properties");
 
 //create Express.js application instance and set port
 const app = express();
@@ -9,6 +10,44 @@ const port = 3000;
 //constants for pagination
 const DEFAULT_LIMIT = 10;
 const DEFAULT_OFFSET = 0;
+
+app.get("/lgas/info", async (req, res) => {
+  try {
+    const command = `SELECT 
+      gid, 
+      pfi, 
+      lga_code, 
+      lga_name, 
+      gaz_lga, 
+      gazregn
+      , 
+      abslgacode, 
+      pfi_cr, 
+      ufi, 
+      ufi_cr, 
+      ufi_old, 
+      ST_X(ST_Centroid(geom)) as x, 
+      ST_Y(ST_Centroid(geom)) as y 
+    FROM vic_lga`;
+    const data = await query(command);
+
+    const matchingData = [];
+    for (const d of data) {
+      const match = propertiesJson.find(
+        (p) => p.longitude === d.x && p.latitude === d.y
+      );
+
+      if (match) {
+        matchingData.push(data, p);
+      }
+    }
+
+    res.json(matchingData);
+  } catch (error) {
+    console.error("Error getting lga resource: ", error);
+    res.status(500).json({ message: "Unexpected error occurred" });
+  }
+});
 
 //route handler to GET requests to lgas/:id where :id is the dynamic lga identifier
 app.get("/lgas/:id", async (req, res) => {
@@ -22,7 +61,7 @@ app.get("/lgas/:id", async (req, res) => {
     }
 
     //sql command to get an lga resource using lga identifier
-    const command = `SELECT * FROM vic_lga WHERE gid = $1`;
+    const command = `SELECT *, CEIL((ST_Area(geom, true) / 1000000) * 29.14) as est_pop FROM vic_lga WHERE gid = $1`;
     const data = (await query(command, [id]))[0];
 
     //return 404 status code if lga identifier is not found
@@ -47,7 +86,7 @@ app.get("/lgas", async (req, res) => {
       return;
     }
     const offset = page > 0 ? (page - 1) * DEFAULT_LIMIT : DEFAULT_OFFSET;
-    const command = `SELECT * FROM vic_lga LIMIT $1 OFFSET $2`;
+    const command = `SELECT *, CEIL((ST_Area(geom, true) / 1000000) * 29.14) as est_pop FROM vic_lga LIMIT $1 OFFSET $2`;
     const data = await query(command, [DEFAULT_LIMIT, offset]);
     const totalPages = await getTotalPages();
 
